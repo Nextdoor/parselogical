@@ -12,9 +12,9 @@ const (
 	parseStateInitial int = iota // start State to determine the message type
 
 	// prelude section
-	parseStateRelation          // <schema>.<table>
-	parseStateOperation         // INSERT/UPDATE/DELETE
-	parseStateEscapedIdentifier // applicable to both the column names, and the relation for when "" is used
+	parseStateRelation           // <schema>.<table>
+	parseStateOperation          // INSERT/UPDATE/DELETE
+	parseStateEscapedIdentifier  // applicable to both the column names, and the relation for when "" is used
 
 	// name and type of the column values
 	parseStateColumnName
