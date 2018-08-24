@@ -9,12 +9,12 @@ import (
 )
 
 const (
-	parseStateInitial int = iota // start state to determine the message type
+	parseStateInitial int = iota // start State to determine the message type
 
 	// prelude section
-	parseStateRelation          // <schema>.<table>
-	parseStateOperation         // INSERT/UPDATE/DELETE
-	parseStateEscapedIdentifier // applicable to both the column names, and the relation for when "" is used
+	parseStateRelation           // <schema>.<table>
+	parseStateOperation          // INSERT/UPDATE/DELETE
+	parseStateEscapedIdentifier  // applicable to both the column names, and the relation for when "" is used
 
 	// name and type of the column values
 	parseStateColumnName
@@ -40,20 +40,20 @@ type ColumnValue struct {
 	Quoted bool
 }
 
-type parseState struct {
-	msg *string
+type ParseState struct {
+	Msg *string
 
-	current       int
-	prev          int
-	tokenStart    int
-	oldKey        bool
-	curColumnName string
-	curColumnType string
+	Current       int
+	Prev          int
+	TokenStart    int
+	OldKey        bool
+	CurColumnName string
+	CurColumnType string
 }
 
 // ParseResult is the result of parsing the string
 type ParseResult struct {
-	state parseState // for internal use
+	State ParseState // for internal use
 
 	Transaction string                 // filled if this is a transaction statement (BEGIN/COMMIT) with the value of the transaction
 	Relation    string                 // filled if this is a DML statement with <schema>.<table>
@@ -66,7 +66,7 @@ type ParseResult struct {
 // NewParseResult creates the structure that is filled by the Parse operation
 func NewParseResult(msg string) *ParseResult {
 	pr := new(ParseResult)
-	pr.state = parseState{msg: &msg, current: parseStateInitial, prev: parseStateInitial, tokenStart: 0, oldKey: false}
+	pr.State = ParseState{Msg: &msg, Current: parseStateInitial, Prev: parseStateInitial, TokenStart: 0, OldKey: false}
 	pr.Columns = make(map[string]ColumnValue)
 	pr.OldColumns = make(map[string]ColumnValue)
 	return pr
@@ -96,10 +96,10 @@ func (pr *ParseResult) ParseColumns() error {
 // based on https://github.com/citusdata/pg_warp/blob/9e69814b85e18fbe5a3c89f0e17d22583c9a398c/consumer/consumer.go
 // as opposed to a hackier earlier version
 func (pr *ParseResult) parse(preludeOnly bool) error {
-	state := pr.state
-	message := *state.msg
+	state := pr.State
+	message := *state.Msg
 
-	if state.current == parseStateInitial {
+	if state.Current == parseStateInitial {
 		if len(message) < 5 {
 			return errors.Errorf("message too short: %s", message)
 		}
@@ -125,14 +125,14 @@ func (pr *ParseResult) parse(preludeOnly bool) error {
 		}
 
 		// we are parsing a table statement, so let's skip over the initial "table "
-		state.tokenStart = 6
-		state.current = parseStateRelation
+		state.TokenStart = 6
+		state.Current = parseStateRelation
 	}
 
 outer:
 	for i := 0; i <= len(message); i++ {
-		if i < state.tokenStart {
-			i = state.tokenStart - 1
+		if i < state.TokenStart {
+			i = state.TokenStart - 1
 			continue
 		}
 
@@ -145,29 +145,29 @@ outer:
 			chrNext = message[i+1]
 		}
 
-		switch state.current {
+		switch state.Current {
 		case parseStateNull:
-			return errors.Errorf("invalid parse state null: %+v", state)
+			return errors.Errorf("invalid parse State null: %+v", state)
 		case parseStateRelation:
 			if chr == ':' {
 				if chrNext != ' ' {
 					return errors.Errorf("invalid character ' ' at %d", i+1)
 				}
-				pr.Relation = message[state.tokenStart:i]
-				state.tokenStart = i + 2
-				state.current = parseStateOperation
+				pr.Relation = message[state.TokenStart:i]
+				state.TokenStart = i + 2
+				state.Current = parseStateOperation
 			} else if chr == '"' {
-				state.prev = state.current
-				state.current = parseStateEscapedIdentifier
+				state.Prev = state.Current
+				state.Current = parseStateEscapedIdentifier
 			}
 		case parseStateOperation:
 			if chr == ':' {
 				if chrNext != ' ' {
 					return errors.Errorf("invalid character ' ' at %d", i+1)
 				}
-				pr.Operation = message[state.tokenStart:i]
-				state.tokenStart = i + 2
-				state.current = parseStateColumnName
+				pr.Operation = message[state.TokenStart:i]
+				state.TokenStart = i + 2
+				state.Current = parseStateColumnName
 
 				if preludeOnly {
 					break outer
@@ -175,42 +175,42 @@ outer:
 			}
 		case parseStateColumnName:
 			if chr == '[' {
-				state.curColumnName = message[state.tokenStart:i]
-				state.tokenStart = i + 1
-				state.current = parseStateColumnType
+				state.CurColumnName = message[state.TokenStart:i]
+				state.TokenStart = i + 1
+				state.Current = parseStateColumnType
 			} else if chr == ':' {
-				if message[state.tokenStart:i] == "old-key" {
-					state.oldKey = true
-				} else if message[state.tokenStart:i] == "new-tuple" {
-					state.oldKey = false
+				if message[state.TokenStart:i] == "old-key" {
+					state.OldKey = true
+				} else if message[state.TokenStart:i] == "new-tuple" {
+					state.OldKey = false
 				}
-				state.tokenStart = i + 2
-			} else if chr == '(' && message[state.tokenStart:len(message)] == "(no-tuple-data)" {
+				state.TokenStart = i + 2
+			} else if chr == '(' && message[state.TokenStart:len(message)] == "(no-tuple-data)" {
 				pr.NoTupleData = true
-				state.current = parseStateEnd
+				state.Current = parseStateEnd
 			} else if chr == '"' {
-				state.prev = state.current
-				state.current = parseStateEscapedIdentifier
+				state.Prev = state.Current
+				state.Current = parseStateEscapedIdentifier
 			}
 		case parseStateColumnType:
 			if chr == ']' {
 				if chrNext != ':' {
 					return errors.Errorf("invalid character '%s' at %d", []byte{chrNext}, i+1)
 				}
-				state.curColumnType = message[state.tokenStart:i]
-				state.tokenStart = i + 2
-				state.current = parseStateColumnValue
+				state.CurColumnType = message[state.TokenStart:i]
+				state.TokenStart = i + 2
+				state.Current = parseStateColumnValue
 			} else if chr == '"' {
-				state.prev = state.current
-				state.current = parseStateEscapedIdentifier
+				state.Prev = state.Current
+				state.Current = parseStateEscapedIdentifier
 			} else if chr == '[' {
-				state.prev = state.current
-				state.current = parseStateOpenSquareBracket
+				state.Prev = state.Current
+				state.Current = parseStateOpenSquareBracket
 			}
 		case parseStateColumnValue:
 			if chr == '\000' || chr == ' ' {
-				quoted := state.prev == parseStateColumnQuotedValue
-				startStr := state.tokenStart
+				quoted := state.Prev == parseStateColumnQuotedValue
+				startStr := state.TokenStart
 				endStr := i
 
 				if quoted {
@@ -220,37 +220,37 @@ outer:
 
 				unescapedValue := strings.Replace(message[startStr:endStr], "''", "'", -1) // the value is escape-quoted to us
 
-				cv := ColumnValue{Value: unescapedValue, Quoted: quoted, Type: state.curColumnType}
+				cv := ColumnValue{Value: unescapedValue, Quoted: quoted, Type: state.CurColumnType}
 
-				if state.oldKey {
-					pr.OldColumns[state.curColumnName] = cv
+				if state.OldKey {
+					pr.OldColumns[state.CurColumnName] = cv
 				} else {
-					pr.Columns[state.curColumnName] = cv
+					pr.Columns[state.CurColumnName] = cv
 				}
 			}
 
 			if chr == '\000' {
-				state.current = parseStateEnd
+				state.Current = parseStateEnd
 			} else if chr == ' ' {
-				state.tokenStart = i + 1
-				state.prev = state.current
-				state.current = parseStateColumnName
+				state.TokenStart = i + 1
+				state.Prev = state.Current
+				state.Current = parseStateColumnName
 			} else if chr == '\'' {
-				state.prev = state.current
-				state.current = parseStateColumnQuotedValue
+				state.Prev = state.Current
+				state.Current = parseStateColumnQuotedValue
 			}
 		case parseStateOpenSquareBracket:
 			if chr == ']' {
-				state.current = state.prev
-				state.prev = parseStateNull
+				state.Current = state.Prev
+				state.Prev = parseStateNull
 			}
 		case parseStateEscapedIdentifier:
 			if chr == '"' {
 				if chrNext == '"' {
 					i++
 				} else {
-					state.current = state.prev
-					state.prev = parseStateNull
+					state.Current = state.Prev
+					state.Prev = parseStateNull
 				}
 			}
 		case parseStateColumnQuotedValue:
@@ -258,16 +258,16 @@ outer:
 				if chrNext == '\'' {
 					i++
 				} else {
-					prev := state.prev
-					state.prev = state.current
-					state.current = prev
+					prev := state.Prev
+					state.Prev = state.Current
+					state.Current = prev
 				}
 			}
 		}
 	}
 
-	if (preludeOnly && state.current != parseStateColumnName) || (!preludeOnly && state.current != parseStateEnd) {
-		return errors.Errorf("invalid parser end state: %+v", state.current)
+	if (preludeOnly && state.Current != parseStateColumnName) || (!preludeOnly && state.Current != parseStateEnd) {
+		return errors.Errorf("invalid parser end State: %+v", state.Current)
 	}
 
 	return nil
